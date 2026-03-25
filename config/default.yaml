@@ -1,0 +1,61 @@
+device: "cpu"  # "cuda" or "cpu"
+
+detection:
+  model: "yolov8n.pt"            # nano model — fast on CPU (was yolov8m)
+  conf_threshold: 0.4
+  iou_threshold: 0.5
+  person_class_id: 0             # COCO class 0 = person
+  imgsz: 416                     # smaller input = faster (was 640)
+
+tracking:
+  track_thresh: 0.25            # lower = keep more low-conf detections (was 0.5)
+  track_buffer: 90              # keep lost tracks longer before deletion (was 30)
+  match_thresh: 0.7             # looser matching across frames (was 0.8)
+  max_tracklet_length: 120
+  reid_stitch: true             # re-stitch broken tracks using appearance
+
+features:
+  face:
+    enabled: true
+    min_face_size: 40
+    embedding_dim: 512
+    mtcnn_thresholds: [0.6, 0.7, 0.7]
+  body:
+    enabled: true
+    model: "osnet_x1_0"
+    embedding_dim: 1280
+    input_size: [128, 64]        # smaller input = faster (was 256x128)
+  gait:
+    enabled: false
+    min_tracklet_length: 30
+    embedding_dim: 128
+    pca_components: 128
+
+matching:
+  weights:
+    face: 0.5
+    body: 0.35
+    gait: 0.15
+  similarity_threshold: 0.3
+  distance_metric: "cosine"
+  reid_interval: 30              # re-id less often (was 15)
+
+visualization:
+  draw_boxes: true
+  draw_ids: false
+  box_thickness: 2
+  matched_color: [0, 255, 0]
+  unknown_color: [0, 0, 255]
+  font_scale: 0.6
+
+logging:
+  level: "INFO"
+  log_file: "output/reid_log.csv"
+
+input:
+  source: "video.mp4"
+  query_dir: "query_images/"
+  output_dir: "output/"
+  save_video: true
+  display: true
+  process_every_n: 3             # only process every Nth frame (skip 2 of 3)

@@ -1,0 +1,29 @@
+# Core ML
+torch>=2.0
+torchvision>=0.15
+
+# Detection
+ultralytics>=8.1
+
+# Tracking
+supervision>=0.19
+
+# Re-ID body embeddings (torchreid or timm as fallback)
+# pip install git+https://github.com/KaiyangZhou/deep-person-reid.git
+timm>=1.0
+
+# Face embeddings (ArcFace via InsightFace)
+insightface>=0.7
+onnxruntime>=1.16
+
+# API
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+
+# General
+opencv-python>=4.8
+numpy>=1.24
+scipy>=1.11
+PyYAML>=6.0
+scikit-learn>=1.3

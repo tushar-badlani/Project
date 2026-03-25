@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Person Re-ID</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            min-height: 100vh;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1a1e2e 0%, #0f1117 100%);
+            border-bottom: 1px solid #21262d;
+            padding: 1.25rem 2rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        header svg { flex-shrink: 0; }
+
+        header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #58a6ff, #bc8cff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        header p {
+            font-size: 0.8rem;
+            color: #8b949e;
+            margin-left: auto;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Upload Section */
+        .upload-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .upload-card {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+
+        .upload-card:hover { border-color: #30363d; }
+
+        .upload-card-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #21262d;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .upload-card-header .label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #c9d1d9;
+        }
+
+        .upload-card-header .badge {
+            font-size: 0.65rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 20px;
+            background: #1f2937;
+            color: #8b949e;
+            margin-left: auto;
+        }
+
+        .drop-zone {
+            position: relative;
+            padding: 2.5rem 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .drop-zone:hover { background: #1c2129; }
+        .drop-zone.dragover { background: #1c2937; border-color: #58a6ff; }
+
+        .drop-zone input { display: none; }
+
+        .drop-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 0.75rem;
+            border-radius: 12px;
+            background: #1f2937;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .drop-zone p {
+            font-size: 0.85rem;
+            color: #8b949e;
+        }
+
+        .drop-zone p span {
+            color: #58a6ff;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        .drop-zone .hint {
+            font-size: 0.75rem;
+            color: #484f58;
+            margin-top: 0.35rem;
+        }
+
+        /* Preview areas */
+        .preview-area {
+            display: none;
+            padding: 1rem;
+            background: #0d1117;
+        }
+
+        .preview-area.active { display: block; }
+
+        .preview-area video,
+        .preview-area img {
+            width: 100%;
+            max-height: 300px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #000;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+            padding: 0.5rem 0.75rem;
+            background: #161b22;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            color: #8b949e;
+        }
+
+        .file-info .name {
+            color: #c9d1d9;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-info .remove {
+            color: #f85149;
+            cursor: pointer;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .file-info .remove:hover { background: #f8514922; }
+
+        /* Process button */
+        .action-bar {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .btn-process {
+            padding: 0.7rem 2rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #238636, #2ea043);
+            color: #fff;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+
+        .btn-process:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+        .btn-process:active:not(:disabled) { transform: translateY(0); }
+        .btn-process:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .status {
+            font-size: 0.85rem;
+            color: #8b949e;
+        }
+
+        .status.error { color: #f85149; }
+        .status.success { color: #3fb950; }
+
+        /* Progress bar */
+        .progress-container {
+            display: none;
+            flex: 1;
+        }
+
+        .progress-container.active { display: block; }
+
+        .progress-bar-bg {
+            height: 6px;
+            background: #21262d;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #58a6ff, #bc8cff);
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.3s;
+            animation: indeterminate 1.5s ease-in-out infinite;
+        }
+
+        @keyframes indeterminate {
+            0% { margin-left: 0; width: 30%; }
+            50% { margin-left: 40%; width: 40%; }
+            100% { margin-left: 100%; width: 0%; }
+        }
+
+        /* Result section */
+        .result-section {
+            display: none;
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .result-section.active { display: block; }
+
+        .result-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #21262d;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .result-header .label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #c9d1d9;
+        }
+
+        .result-header .download-btn {
+            margin-left: auto;
+            padding: 0.4rem 1rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            background: #21262d;
+            color: #c9d1d9;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+
+        .result-header .download-btn:hover { background: #30363d; }
+
+        .result-body {
+            padding: 1rem;
+            background: #0d1117;
+        }
+
+        .result-body video {
+            width: 100%;
+            max-height: 500px;
+            border-radius: 8px;
+            background: #000;
+        }
+
+        /* Responsive */
+        @media (max-width: 700px) {
+            .upload-grid { grid-template-columns: 1fr; }
+            .container { padding: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="1.5">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <path d="M8 21h8M12 17v4"/>
+        <circle cx="12" cy="10" r="2.5"/>
+        <path d="M7.5 7.5a5 5 0 0 1 9 0" stroke-linecap="round"/>
+    </svg>
+    <h1>Person Re-Identification</h1>
+    <p>Upload a video and a reference photo to identify a person</p>
+</header>
+
+<div class="container">
+
+    <!-- Upload Cards -->
+    <div class="upload-grid">
+
+        <!-- Video Upload -->
+        <div class="upload-card">
+            <div class="upload-card-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b949e" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                <span class="label">Video</span>
+                <span class="badge">mp4, avi, mov, mkv</span>
+            </div>
+            <div class="drop-zone" id="videoDropZone">
+                <input type="file" id="videoInput" accept="video/mp4,video/avi,video/mov,video/x-matroska,video/webm,.mp4,.avi,.mov,.mkv,.webm">
+                <div class="drop-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#484f58" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <p>Drop your video here or <span>browse</span></p>
+                <p class="hint">Surveillance or CCTV footage works best</p>
+            </div>
+            <div class="preview-area" id="videoPreview">
+                <video id="videoPlayer" controls muted></video>
+                <div class="file-info">
+                    <span class="name" id="videoFileName"></span>
+                    <span class="remove" id="videoRemove">&times; Remove</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Photo Upload -->
+        <div class="upload-card">
+            <div class="upload-card-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b949e" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                <span class="label">Reference Photo</span>
+                <span class="badge">jpg, png, webp</span>
+            </div>
+            <div class="drop-zone" id="photoDropZone">
+                <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp,image/bmp,.jpg,.jpeg,.png,.webp,.bmp">
+                <div class="drop-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#484f58" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <p>Drop a photo here or <span>browse</span></p>
+                <p class="hint">Clear face/body photo of the person to find</p>
+            </div>
+            <div class="preview-area" id="photoPreview">
+                <img id="photoImage" alt="Query photo">
+                <div class="file-info">
+                    <span class="name" id="photoFileName"></span>
+                    <span class="remove" id="photoRemove">&times; Remove</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action bar -->
+    <div class="action-bar">
+        <button class="btn-process" id="processBtn" disabled>Process Video</button>
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="progressFill"></div>
+            </div>
+        </div>
+        <span class="status" id="statusText"></span>
+    </div>
+
+    <!-- Result -->
+    <div class="result-section" id="resultSection">
+        <div class="result-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3fb950" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <span class="label">Result</span>
+            <a class="download-btn" id="downloadBtn" download="result.mp4">Download</a>
+        </div>
+        <div class="result-body">
+            <video id="resultPlayer" controls></video>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const videoInput = document.getElementById('videoInput');
+    const photoInput = document.getElementById('photoInput');
+    const videoDropZone = document.getElementById('videoDropZone');
+    const photoDropZone = document.getElementById('photoDropZone');
+    const videoPreview = document.getElementById('videoPreview');
+    const photoPreview = document.getElementById('photoPreview');
+    const videoPlayer = document.getElementById('videoPlayer');
+    const photoImage = document.getElementById('photoImage');
+    const videoFileName = document.getElementById('videoFileName');
+    const photoFileName = document.getElementById('photoFileName');
+    const videoRemove = document.getElementById('videoRemove');
+    const photoRemove = document.getElementById('photoRemove');
+    const processBtn = document.getElementById('processBtn');
+    const statusText = document.getElementById('statusText');
+    const progressContainer = document.getElementById('progressContainer');
+    const resultSection = document.getElementById('resultSection');
+    const resultPlayer = document.getElementById('resultPlayer');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    let videoFile = null;
+    let photoFile = null;
+
+    function updateProcessBtn() {
+        processBtn.disabled = !(videoFile && photoFile);
+    }
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    // --- Drop zone logic ---
+    function setupDropZone(zone, input, onFile) {
+        zone.addEventListener('click', () => input.click());
+
+        zone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            zone.classList.add('dragover');
+        });
+
+        zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+
+        zone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) onFile(e.dataTransfer.files[0]);
+        });
+
+        input.addEventListener('change', () => {
+            if (input.files.length) onFile(input.files[0]);
+        });
+    }
+
+    function setVideo(file) {
+        videoFile = file;
+        videoFileName.textContent = `${file.name} (${formatSize(file.size)})`;
+        videoPlayer.src = URL.createObjectURL(file);
+        videoDropZone.style.display = 'none';
+        videoPreview.classList.add('active');
+        updateProcessBtn();
+    }
+
+    function setPhoto(file) {
+        photoFile = file;
+        photoFileName.textContent = `${file.name} (${formatSize(file.size)})`;
+        photoImage.src = URL.createObjectURL(file);
+        photoDropZone.style.display = 'none';
+        photoPreview.classList.add('active');
+        updateProcessBtn();
+    }
+
+    function clearVideo() {
+        if (videoPlayer.src) URL.revokeObjectURL(videoPlayer.src);
+        videoFile = null;
+        videoInput.value = '';
+        videoPlayer.src = '';
+        videoDropZone.style.display = '';
+        videoPreview.classList.remove('active');
+        updateProcessBtn();
+    }
+
+    function clearPhoto() {
+        if (photoImage.src) URL.revokeObjectURL(photoImage.src);
+        photoFile = null;
+        photoInput.value = '';
+        photoImage.src = '';
+        photoDropZone.style.display = '';
+        photoPreview.classList.remove('active');
+        updateProcessBtn();
+    }
+
+    setupDropZone(videoDropZone, videoInput, setVideo);
+    setupDropZone(photoDropZone, photoInput, setPhoto);
+
+    videoRemove.addEventListener('click', clearVideo);
+    photoRemove.addEventListener('click', clearPhoto);
+
+    // --- Process ---
+    processBtn.addEventListener('click', async () => {
+        if (!videoFile || !photoFile) return;
+
+        processBtn.disabled = true;
+        statusText.textContent = 'Processing... this may take a while';
+        statusText.className = 'status';
+        progressContainer.classList.add('active');
+        resultSection.classList.remove('active');
+
+        const formData = new FormData();
+        formData.append('video', videoFile);
+        formData.append('photo', photoFile);
+
+        try {
+            const response = await fetch('/process', { method: 'POST', body: formData });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                throw new Error(err.detail || `Server error ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+
+            resultPlayer.src = url;
+            downloadBtn.href = url;
+            resultSection.classList.add('active');
+            statusText.textContent = 'Done!';
+            statusText.className = 'status success';
+
+        } catch (e) {
+            statusText.textContent = e.message;
+            statusText.className = 'status error';
+        } finally {
+            progressContainer.classList.remove('active');
+            processBtn.disabled = false;
+        }
+    });
+</script>
+
+</body>
+</html>
