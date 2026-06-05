@@ -1,9 +1,14 @@
 from dataclasses import dataclass
 from collections import defaultdict
+from contextlib import nullcontext
+from typing import TYPE_CHECKING, Optional
 
 import cv2
 import numpy as np
 import supervision as sv
+
+if TYPE_CHECKING:
+    from src.utils.profiler import PipelineProfiler
 
 
 @dataclass
@@ -29,8 +34,9 @@ class Tracker:
     appearance, the old ID is reused to reduce fragmentation.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, profiler: Optional["PipelineProfiler"] = None):
         trk_cfg = config["tracking"]
+        self._profiler = profiler
         self.tracker = sv.ByteTrack(
             track_activation_threshold=trk_cfg["track_thresh"],
             lost_track_buffer=trk_cfg["track_buffer"],
@@ -101,16 +107,18 @@ class Tracker:
         """Update tracker with new detections and return tracked persons."""
         self._frame_count += 1
 
-        if len(detections) == 0:
-            self.tracker.update_with_detections(sv.Detections.empty())
-            self._handle_lost_tracks(set())
-            return []
+        ctx = self._profiler.time_stage("bytetrack") if self._profiler else nullcontext()
+        with ctx:
+            if len(detections) == 0:
+                self.tracker.update_with_detections(sv.Detections.empty())
+                self._handle_lost_tracks(set())
+                return []
 
-        sv_detections = sv.Detections(
-            xyxy=detections[:, :4],
-            confidence=detections[:, 4],
-        )
-        tracked = self.tracker.update_with_detections(sv_detections)
+            sv_detections = sv.Detections(
+                xyxy=detections[:, :4],
+                confidence=detections[:, 4],
+            )
+            tracked = self.tracker.update_with_detections(sv_detections)
 
         results = []
         h, w = frame.shape[:2]

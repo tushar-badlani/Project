@@ -1,7 +1,11 @@
-from typing import Optional
+from contextlib import nullcontext
+from typing import TYPE_CHECKING, Optional
 
 import cv2
 import numpy as np
+
+if TYPE_CHECKING:
+    from src.utils.profiler import PipelineProfiler
 
 
 class GaitEmbedder:
@@ -12,12 +16,13 @@ class GaitEmbedder:
     a compact gait embedding.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, profiler: Optional["PipelineProfiler"] = None):
         gait_cfg = config["features"]["gait"]
         self.enabled = gait_cfg["enabled"]
         self.min_tracklet_length = gait_cfg["min_tracklet_length"]
         self.embedding_dim = gait_cfg["embedding_dim"]
         self.pca_components = gait_cfg.get("pca_components", self.embedding_dim)
+        self._profiler = profiler
 
         # Standardized silhouette size for GEI computation
         self._sil_h = 128
@@ -95,7 +100,9 @@ class GaitEmbedder:
         if len(tracklet) < self.min_tracklet_length:
             return None
 
-        gei = self._compute_gei(tracklet)
-        embedding = self._reduce_dim(gei)
+        ctx = self._profiler.time_stage("gaitset") if self._profiler else nullcontext()
+        with ctx:
+            gei = self._compute_gei(tracklet)
+            embedding = self._reduce_dim(gei)
 
         return embedding

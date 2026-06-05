@@ -1,7 +1,12 @@
-from typing import Optional
+import os
+from contextlib import nullcontext
+from typing import TYPE_CHECKING, Optional
 
 import cv2
 import numpy as np
+
+if TYPE_CHECKING:
+    from src.utils.profiler import PipelineProfiler
 
 
 class FaceEmbedder:
@@ -12,30 +17,73 @@ class FaceEmbedder:
     is detected or if the face is too small.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, profiler: Optional["PipelineProfiler"] = None):
         face_cfg = config["features"]["face"]
         self.enabled = face_cfg["enabled"]
         self.min_face_size = face_cfg["min_face_size"]
+        self._profiler = profiler
+        self._device = config["device"]
 
         if self.enabled:
-            import insightface
+            import insightface  # noqa: F401
             from insightface.app import FaceAnalysis
 
-            # Use buffalo_l model (includes detection + recognition)
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            if config["device"] == "cpu":
+            if self._device == "cpu":
                 providers = ["CPUExecutionProvider"]
 
             # buffalo_sc is much faster on CPU than buffalo_l
-            model_name = "buffalo_sc" if config["device"] == "cpu" else "buffalo_l"
+            model_name = "buffalo_sc" if self._device == "cpu" else "buffalo_l"
+            self._model_name = model_name
             self.app = FaceAnalysis(
                 name=model_name,
                 providers=providers,
             )
             self.app.prepare(
-                ctx_id=0 if config["device"] != "cpu" else -1,
+                ctx_id=0 if self._device != "cpu" else -1,
                 det_size=(320, 320),  # smaller det input for speed
             )
+
+            if profiler is not None:
+                self._profile_models()
+
+    def _profile_models(self) -> None:
+        """Count parameters for InsightFace ONNX models (detection + recognition)."""
+        try:
+            import numpy as _np
+            import onnx  # type: ignore
+
+            insightface_root = os.path.expanduser("~/.insightface/models")
+            model_dir = os.path.join(insightface_root, self._model_name)
+
+            total_params = 0
+            found_files = []
+            if os.path.isdir(model_dir):
+                for fname in os.listdir(model_dir):
+                    if fname.endswith(".onnx"):
+                        fpath = os.path.join(model_dir, fname)
+                        try:
+                            proto = onnx.load(fpath)
+                            n = sum(
+                                int(_np.prod(init.dims))
+                                for init in proto.graph.initializer
+                                if len(init.dims) > 0
+                            )
+                            found_files.append((fname, n))
+                            total_params += n
+                        except Exception:
+                            pass
+
+            if found_files:
+                self._profiler.record_model_profile(
+                    "InsightFace (ArcFace)", None, total_params
+                )
+            else:
+                self._profiler.record_model_profile("InsightFace (ArcFace)", None, None)
+
+        except Exception as exc:
+            self._profiler.record_model_profile("InsightFace (ArcFace)", None, None)
+            print(f"[Profiler] InsightFace param count failed: {exc}")
 
     def extract(self, crop: np.ndarray) -> Optional[np.ndarray]:
         """Extract face embedding from a person crop.
@@ -49,8 +97,10 @@ class FaceEmbedder:
         if not self.enabled:
             return None
 
-        # InsightFace expects BGR input (which OpenCV provides)
-        faces = self.app.get(crop)
+        ctx = self._profiler.time_stage("insightface") if self._profiler else nullcontext()
+        with ctx:
+            # InsightFace expects BGR input (which OpenCV provides)
+            faces = self.app.get(crop)
 
         if not faces:
             return None

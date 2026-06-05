@@ -26,7 +26,7 @@ features:
     embedding_dim: 1280
     input_size: [128, 64]        # smaller input = faster (was 256x128)
   gait:
-    enabled: false
+    enabled: true
     min_tracklet_length: 30
     embedding_dim: 128
     pca_components: 128

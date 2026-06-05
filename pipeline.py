@@ -28,7 +28,7 @@ from src.tracking.bytetrack import TrackedPerson
 from src.features import FaceEmbedder, BodyEmbedder, GaitEmbedder
 from src.matching import Gallery, Matcher
 from src.visualization import Visualizer
-from src.utils import MatchLogger
+from src.utils import MatchLogger, PipelineProfiler
 
 
 def load_config(path: str) -> dict:
@@ -51,20 +51,27 @@ def parse_args():
         "--max-crops", type=int, default=10,
         help="Max crops to keep per track for matching (default: 10)"
     )
+    parser.add_argument(
+        "--profile", action="store_true",
+        help="Enable pipeline profiling (timing + FLOPs/param counts)"
+    )
     return parser.parse_args()
 
 
-def run_pipeline(config: dict, max_crops: int = 10):
+def run_pipeline(config: dict, max_crops: int = 10, enable_profiling: bool = False):
     """Two-pass pipeline: collect then match then draw."""
+
+    # ── Initialize profiler ──────────────────────────────────────────
+    profiler = PipelineProfiler(config["device"]) if enable_profiling else None
 
     # ── Initialize modules ───────────────────────────────────────────
     print("Initializing modules...")
-    detector = PersonDetector(config)
-    tracker = Tracker(config)
-    face_embedder = FaceEmbedder(config)
-    body_embedder = BodyEmbedder(config)
-    gait_embedder = GaitEmbedder(config)
-    matcher = Matcher(config)
+    detector = PersonDetector(config, profiler=profiler)
+    tracker = Tracker(config, profiler=profiler)
+    face_embedder = FaceEmbedder(config, profiler=profiler)
+    body_embedder = BodyEmbedder(config, profiler=profiler)
+    gait_embedder = GaitEmbedder(config, profiler=profiler)
+    matcher = Matcher(config, profiler=profiler)
     gallery = Gallery(config, face_embedder, body_embedder)
     visualizer = Visualizer(config)
     logger = MatchLogger(config)
@@ -284,6 +291,8 @@ def run_pipeline(config: dict, max_crops: int = 10):
             writer.release()
         if display:
             cv2.destroyAllWindows()
+        if profiler is not None:
+            profiler.print_summary()
         logger.close()
 
 
@@ -301,7 +310,7 @@ def main():
     if args.no_display:
         config["input"]["display"] = False
 
-    run_pipeline(config, max_crops=args.max_crops)
+    run_pipeline(config, max_crops=args.max_crops, enable_profiling=args.profile)
 
 
 if __name__ == "__main__":

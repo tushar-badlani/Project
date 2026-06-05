@@ -1,9 +1,13 @@
-from typing import Optional
+from contextlib import nullcontext
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 from scipy.spatial.distance import cosine as cosine_distance
 
 from .gallery import Gallery
+
+if TYPE_CHECKING:
+    from src.utils.profiler import PipelineProfiler
 
 
 class Matcher:
@@ -13,10 +17,11 @@ class Matcher:
     renormalization when some modalities are unavailable.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, profiler: Optional["PipelineProfiler"] = None):
         match_cfg = config["matching"]
         self.weights = match_cfg["weights"]  # {"face": 0.5, "body": 0.35, "gait": 0.15}
         self.threshold = match_cfg["similarity_threshold"]
+        self._profiler = profiler
 
     def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
         """Compute cosine similarity between two vectors."""
@@ -40,19 +45,20 @@ class Matcher:
         if not identities:
             return ("unknown", 0.0)
 
-        # Check if query has any embeddings at all
         has_any = any(v is not None for v in query_embeddings.values())
         if not has_any:
             return ("unknown", 0.0)
 
-        best_id = "unknown"
-        best_score = 0.0
+        ctx = self._profiler.time_stage("fusion") if self._profiler else nullcontext()
+        with ctx:
+            best_id = "unknown"
+            best_score = 0.0
 
-        for identity in identities:
-            score = self._compute_fused_score(query_embeddings, identity)
-            if score > best_score:
-                best_score = score
-                best_id = identity.person_id
+            for identity in identities:
+                score = self._compute_fused_score(query_embeddings, identity)
+                if score > best_score:
+                    best_score = score
+                    best_id = identity.person_id
 
         if best_score < self.threshold:
             return ("unknown", best_score)

@@ -2,3 +2,8 @@
 *.mp4
 __pycache__/
 *.pt
+*.pdf
+*.jpg
+*.png
+output/
+query_images/

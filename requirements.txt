@@ -21,6 +21,9 @@ fastapi>=0.110
 uvicorn>=0.29
 python-multipart>=0.0.9
 
+# Profiling
+thop>=0.1.1  # FLOPs / param counting for PyTorch models
+
 # General
 opencv-python>=4.8
 numpy>=1.24

@@ -1,7 +1,13 @@
+from contextlib import nullcontext
+from typing import TYPE_CHECKING, Optional
+
 import cv2
 import numpy as np
 import torch
 import torchvision.transforms as T
+
+if TYPE_CHECKING:
+    from src.utils.profiler import PipelineProfiler
 
 
 # Mapping from torchreid model names to timm equivalents
@@ -21,11 +27,12 @@ class BodyEmbedder:
     falls back to a ResNet50 backbone via timm.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, profiler: Optional["PipelineProfiler"] = None):
         body_cfg = config["features"]["body"]
         self.enabled = body_cfg["enabled"]
         self.device = torch.device(config["device"])
         self.input_size = tuple(body_cfg["input_size"])  # (H, W)
+        self._profiler = profiler
 
         self.transform = T.Compose([
             T.ToPILImage(),
@@ -40,6 +47,24 @@ class BodyEmbedder:
         self._use_torchreid = False
         if self.enabled:
             self.model = self._load_model(body_cfg["model"])
+            if profiler is not None:
+                self._profile_model()
+
+    def _profile_model(self) -> None:
+        """Profile FLOPs and params for the body backbone using thop."""
+        try:
+            # torchreid wraps the nn.Module; access it via .model.model
+            if self._use_torchreid:
+                nn_model = self.model.model
+            else:
+                nn_model = self.model
+
+            H, W = self.input_size
+            dummy = torch.zeros(1, 3, H, W).to(self.device)
+            self._profiler.profile_torch_model("OSNet", nn_model, dummy)
+        except Exception as exc:
+            self._profiler.record_model_profile("OSNet", None, None)
+            print(f"[Profiler] OSNet FLOPs profiling failed: {exc}")
 
     def _load_model(self, model_name: str):
         """Load model, trying torchreid first, then timm as fallback."""
@@ -81,12 +106,14 @@ class BodyEmbedder:
 
         rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
 
-        if self._use_torchreid:
-            features = self.model([rgb])
-            embedding = features.cpu().numpy().flatten()
-        else:
-            tensor = self.transform(rgb).unsqueeze(0).to(self.device)
-            embedding = self.model(tensor).cpu().numpy().flatten()
+        ctx = self._profiler.time_stage("osnet") if self._profiler else nullcontext()
+        with ctx:
+            if self._use_torchreid:
+                features = self.model([rgb])
+                embedding = features.cpu().numpy().flatten()
+            else:
+                tensor = self.transform(rgb).unsqueeze(0).to(self.device)
+                embedding = self.model(tensor).cpu().numpy().flatten()
 
         # L2 normalize
         norm = np.linalg.norm(embedding)
@@ -103,14 +130,16 @@ class BodyEmbedder:
 
         rgb_crops = [cv2.cvtColor(c, cv2.COLOR_BGR2RGB) for c in crops]
 
-        if self._use_torchreid:
-            features = self.model(rgb_crops)
-            embeddings = features.cpu().numpy()
-        else:
-            tensors = torch.stack(
-                [self.transform(c) for c in rgb_crops]
-            ).to(self.device)
-            embeddings = self.model(tensors).cpu().numpy()
+        ctx = self._profiler.time_stage("osnet") if self._profiler else nullcontext()
+        with ctx:
+            if self._use_torchreid:
+                features = self.model(rgb_crops)
+                embeddings = features.cpu().numpy()
+            else:
+                tensors = torch.stack(
+                    [self.transform(c) for c in rgb_crops]
+                ).to(self.device)
+                embeddings = self.model(tensors).cpu().numpy()
 
         # L2 normalize each row
         norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
